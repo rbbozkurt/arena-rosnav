@@ -108,20 +108,12 @@ class Agent:
         elif action == Action.FORWARD:
             self.cur_act = action
             if self.cur_dir == Direction.DOWN:
-                self.prev_x = self.x
-                self.prev_y = self.y
                 self.y = self.y + 1
             elif self.cur_dir == Direction.UP:
-                self.prev_x = self.x
-                self.prev_y = self.y
                 self.y = self.y - 1
             elif self.cur_dir == Direction.LEFT:
-                self.prev_x = self.x
-                self.prev_y = self.y
                 self.x = self.x - 1
             elif self.cur_dir == Direction.RIGHT:
-                self.prev_x = self.x
-                self.prev_y = self.y
                 self.x = self.x + 1
 
             if self.carrying_shelf:
@@ -138,12 +130,20 @@ class Agent:
 
 class AgentWarehouse:
 
-    def __init__(self):
+    def __init__(self, _map_width: float, _map_height: float, _grid_width: int, _grid_height: int, _agents: list,
+                 _goals: list):
 
-        self.map_width: int = 0
-        self.map_height: int = 0
-        self.grid_width: int = 0
-        self.grid_height: int = 0
+        self.map_width = _map_width
+        self.map_height = _map_height
+        self.grid_width = _grid_width
+        self.grid_height = _grid_height
+
+        self.agent_dic = {}
+        self.shelf_dic = {}
+        self.goal_dic = {}
+
+        self._debug_init_agents(_agents)
+        self._debug_init_goals(_goals)
         # subscriptions
         self.agent_action_subs = rospy.Subscriber("/agent_action_topic", Action, )
         self.agent_init_subs = rospy.Subscriber("/agent_init_topic", Agent, )
@@ -155,10 +155,17 @@ class AgentWarehouse:
         self.agent_load_pub = rospy.Publisher("/agent_load_topic", Agent)
         self.agent_unload_pub = rospy.Publisher("/agent_unload_topic", Agent)
 
-        self.agent_dic = {}
-        self.shelf_dic = {}
-        self.goal_dic = {}
         ##iterate over the map to find goal and the shelf
+
+    def _debug_init_goals(self, goals: list):
+        for i, (x, y) in enumerate(goals):
+            cal_y, cal_x = self._con_to_disc(y, x)
+            self.goal_dic[i] = Goal(cal_x, cal_y)
+
+    def _debug_init_agents(self, agents: list):
+        for i, (a, (x, y)) in enumerate(agents):
+            cal_y, cal_x = self._con_to_disc(y, x)
+            self.agent_dic[i] = Agent(cal_y, cal_x, a)
 
     def _init_agents_callback(self, msg):
 
@@ -266,8 +273,10 @@ def run():
     print(
         "==================================\nagent warehouse node started\n=================================="
     )
-    number_of_agents = 4
-    warehouse = AgentWarehouse(number_of_agents)
+    agents = [(Direction.RIGHT, (722, 300)), (Direction.RIGHT, (400, 200)), (Direction.DOWN, (134, 40)),
+              (Direction.UP, (432, 90)), (Direction.UP, (190, 500))]
+    goals = [(400, 800), (500, 800)]
+    warehouse = AgentWarehouse(800, 600, 8, 6, agents, goals)
     rospy.on_shutdown(warehouse.on_shutdown)
 
     rospy.spin()
