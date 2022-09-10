@@ -145,6 +145,7 @@ class Warehouse:
 
 
     def cb_agent_action(self,msg): # Assuming we recieve sth like this [ [action, [x,y]], next agent]
+
         agent_ids = msg.agent_ids
         agent_id = 0
         for agent in msg.actions:

@@ -221,7 +221,7 @@ class AgentWarehouse:
             self.shelf_dic[ind] = Shelf(y, x)
 
     def step(self):
-
+        pass
     # for each simulation step
 
     # checks  if agent is on one of the goals
@@ -250,7 +250,7 @@ class AgentWarehouse:
 
     # method to be used for converting self.map_image into array
     def _convert_image_into_array(self):
-
+        pass
     # convert map into array and initialise self.map_array
     def _con_to_disc(self, map_y: float, map_x: float) -> Tuple:
         single_grid_width = self.map_width / self.grid_width
