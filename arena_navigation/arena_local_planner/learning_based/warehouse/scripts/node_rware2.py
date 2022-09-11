@@ -27,6 +27,8 @@ import math
 
 from scipy.interpolate import RegularGridInterpolator
 
+ID_DECIMALS = 1
+
 class Action(Enum):
     NOOP = 0
     FORWARD = 1
@@ -55,9 +57,11 @@ class Goal:
 
 class Shelf:
     counter = 0
-    def __init__(self,  x: int, y: int):
+    def __init__(self, x: int, y: int):
         self.x = x
         self.y = y
+        self.id = Shelf.counter
+        Shelf.counter += 1
 
 
 #TODO WRITE ACTION PUBLISHER 
@@ -66,11 +70,12 @@ class Agent:
     counter = 0
 
     def __init__(self, dir, x,y):
-        self.counter += Agent.counter + 1
         self.id = Agent.counter
+        Agent.counter += 1
         self.x = x
         self.y = y
-        self.cur_dir = dir
+        self.pre_dir = dir # todo save update pre dir
+        self.dir = dir
         self.cur_act: Optional[Action] = None
         self.carrying_shelf: bool = None
         self.carrying_shelf_id: int = None
@@ -130,7 +135,7 @@ class Warehouse:
     def init_agents(self,agents):
         i = 0
         for agent in agents:
-            self.agent_dict[i] = Agent(agent[0],agent[1][0],agent[1][1])
+            #self.agent_dict[i] = Agent(agent[0],agent[1][0],agent[1][1])
             i+= 1
 
     def __init__(self, width, height, map_width, map_height, agents, goal):
@@ -142,24 +147,18 @@ class Warehouse:
         self.h = np.arange(0,self.box_h)
 
         
-        self.map_grid_heigth = 0
+        self.map_grid_height = 0
         self.map_grid_width = 0
 
         self.agent_list = []
         self.agent_dict = {}
-        self.init_agents(agents)
+        #self.init_agents(agents)
 
         self.shelf_list = []
         self.shelf_dict = {}
         self.goal = goal
 
-        print(self.agent_dict[0].x)
-        print(self.agent_dict[1].x,self.agent_dict[1].y)
-        print(self.map_to_grid(self.agent_dict[1].x,self.agent_dict[1].y))
-        print(self.map_to_grid(self.agent_dict[2].x,self.agent_dict[2].y))
-        print(self.map_to_grid(self.agent_dict[3].x,self.agent_dict[3].y))
-        print(self.map_to_grid(self.agent_dict[4].x,self.agent_dict[4].y))
-
+        
         # subscriptions
         self.sub_agent_action = rospy.Subscriber("/agent_action_topic", Vector3, self.cb_agent_action )
         #self.sub_goal = rospy.Subscriber("/goal_init_topic", Vector3, self.cb_sub_goal ) # todo??
@@ -170,20 +169,29 @@ class Warehouse:
         self.agent_handle_load_pub = rospy.Publisher("/agent_handle_load_topic", String,self.cb_handle_load,queue_size=10)
 
         self.test_msg = rospy.Subscriber("map_topic",String, self.read_parse_map)
-
+        
+        self.update_map_pub = rospy.Publisher("update_map_topic",String,queue_size=10)
+        self.spawn_shelf_sub = rospy.Subscriber('spawn_shelf_topic', String,self.cb_spawn_shelf)
+        self.spawn_agent_sub = rospy.Subscriber('spawn_agent_topic', String,self.cb_spawn_agent)
+    
         self.map_str = ""
+
         ##iterate over the map to find goal and the shelf
 
     def read_parse_map(self,data):
         
         self.map_str = str(data.data)
-        self.map_grid_heigth = len(self.map_str)
-        self.map_grid_width = len(self.map_str[0])
 
         rospy.loginfo(rospy.get_caller_id() + ' RECIEVED : %s', data.data)
         #print(data.data)    
         #for line in map_str:
         lines = self.map_str.split('/')
+        
+        self.map_grid_height = len(lines)
+        self.map_grid_width = len(lines[0].split(','))
+
+        rospy.loginfo('height %d width %d',self.map_grid_height, self.map_grid_width)
+
 
         for i in range(len(lines)):
             row = lines[i].split(',')
@@ -193,21 +201,117 @@ class Warehouse:
                 
                 elif row[j][0] == 'A': 
                     # todo find better way for shelf carrying agents
-                    agent = Agent(int(row[j][2]),i,j)
-                    self.agent_list.append(agent)
-                    rospy.loginfo(' AGENT FOUND AT : %d - %d , dir : %d', agent.x,agent.y,agent.cur_dir)    
-                    
+                    agent = Agent(int(row[j][1]),i,j)
+                    self.agent_dict[agent.id] = agent
+                    rospy.loginfo('AGENT FOUND AT : %d - %d , dir : %d', agent.x,agent.y,agent.dir)    
+            
+                    rospy.loginfo('AGENT ID : %d ', self.agent_dict[agent.id].id) 
                 elif row[j][0] == 'S':
+
                     shelf = Shelf(i,j)
-                    self.shelf_list.append(shelf)
-                    rospy.loginfo(' SHELF FOUND AT : %d - %d', shelf.x,shelf.y)    
+                    self.shelf_dict[shelf.id] = shelf
+                    rospy.loginfo('SHELF FOUND AT : %d - %d', shelf.x,shelf.y)    
                     
                 
                 elif row[j][0] == 'G':
                     goal = Goal(i,j)
                     self.goal = goal
-                    rospy.loginfo(' GOAL FOUND AT : %d - %d', goal.x,goal.y)    
-                    
+                    rospy.loginfo('GOAL FOUND AT : %d - %d', goal.x,goal.y)    
+            
+    
+    def cb_spawn_agent(self,data):
+        
+        rospy.loginfo(rospy.get_caller_id() + ' RECIEVED : %s', data.data)
+        a_str = str(data.data).split('_')
+        
+        new_agent  = Agent(int(a_str[0]),int(a_str[1]),int(a_str[2]))
+        self.agent_dict[new_agent.id] = new_agent
+        self.update_map()
+        # TODO check if spawning point is valid
+
+    def cb_spawn_shelf(self,data):
+        
+        rospy.loginfo(rospy.get_caller_id() + ' RECIEVED : %s', data.data)
+        a_str = str(data.data).split('_')
+        
+        new_shelf  = Shelf(int(a_str[0]),int(a_str[1]))
+        self.shelf_dict[new_shelf.id] = new_shelf
+        self.update_map()
+        
+        # TODO check if spawning point is valid
+
+    def update_map(self):        
+
+        map_str_arr = np.chararray((self.map_grid_height, self.map_grid_width),itemsize=10,unicode=True)
+        map_str_arr[:] = '0'
+
+        map_str_arr[self.goal.x][self.goal.y] = 'G'
+
+        for agent_id in self.agent_dict.keys():
+            agent = self.agent_dict[agent_id]
+            if map_str_arr[agent.x][agent.y][0] == 'G':
+                map_str_arr[agent.x][agent.y] += '_A'+ str(agent.dir)
+            else:
+                map_str_arr[agent.x][agent.y] = 'A'+ str(agent.dir)
+
+        for shelf_id in self.shelf_dict.keys():
+            shelf = self.shelf_dict[shelf_id]
+            if map_str_arr[shelf.x][shelf.y][0] == 'A' or map_str_arr[shelf.x][shelf.y][0] == 'G':
+                map_str_arr[shelf.x][shelf.y] += "_S"
+            else:
+                map_str_arr[shelf.x][shelf.y] = 'S'
+
+        new_map_arr = []
+        for row in map_str_arr[:]:
+            s = ','
+            new_map_arr.append(s.join(row.tolist()))
+        s = '/'
+        new_map_str = s.join(new_map_arr)
+
+        self.map_str = new_map_str
+            
+        rospy.loginfo(rospy.get_caller_id() + ' SENDING NEW MAP : %s', new_map_str)
+
+        rate = rospy.Rate(10) # 10hz
+        while not rospy.is_shutdown():
+            rate.sleep()
+            self.update_map_pub.publish(new_map_str)
+            break
+
+    def assign_agent_to_shelf(self):
+        # TODO f.e. manhattan distance to shelf
+        pass
+
+    def build_grid_graph(self):
+        # TODO build graph with edges move,right,left
+        pass
+    
+    def find_move(self):
+        # TODO find what is the next move using the grid graph
+        pass
+    
+    def execute_move(self):
+        # TODO execute found move and update map()
+        pass
+
+
+    def calculate_action():
+        # agent - shelf matching
+        # agent 1 rotation, 0-2
+        #monte-carlo / propagation /  tree search
+        pass
+
+    
+    def cb_execute_action(): #AX_X1_Y1_DIR, AX_X1_Y1_DIR, 
+        # call this inside loop and publish to task manager the new calc agent values
+        pass
+    
+    
+    def cb_handle_load(shelf_id): #in agent pickup shelf + AgentID-ShelfID
+        # publish to task manager
+        pass
+
+
 
     def map_to_grid(self,x,y):
         return math.floor(x/100), math.floor(y/100)
@@ -251,13 +355,7 @@ class Warehouse:
 
             agent_id += 1
 
-    def cb_handle_load(shelf_id):
-        # publish to task manager
-        pass
 
-    def cb_execute_action():
-        # call this inside loop and publish to task manager the new calc agent values
-        pass
 
     # todo spawn shelf coming from topic
     def cb_shelves(self,msg): # assuming [x,y] without id
@@ -281,11 +379,7 @@ def run():
     rospy.init_node("warehouse", anonymous=False)
     print('==================================\narena warehouse node started\n==================================')
 
-    agents = [(Direction.RIGHT, (722, 300)), (Direction.RIGHT, (400, 200)), (Direction.DOWN, (134, 40)),
-              (Direction.UP, (432, 90)), (Direction.UP, (190, 500))]
-    goals = [0,0]
-
-    warehouse = Warehouse(800, 600, 8, 6, agents, goals)
+    warehouse = Warehouse(800, 600, 8, 6, [], [])
     rospy.on_shutdown(warehouse.on_shutdown)
 
     rospy.spin()
@@ -293,3 +387,37 @@ def run():
 
 if __name__ == "__main__":
     run()
+
+'''
+        for agent_id in self.agent_dict.keys():
+            print(self.agent_dict[agent_id].id)
+            agent_pos.append([self.agent_dict[agent_id].x,self.agent_dict[agent_id].y,self.agent_dict[agent_id].dir])
+
+        shelf_pos = []
+        for shelf_id in self.shelf_dict.keys():
+            shelf_pos.append([self.shelf_dict[shelf_id].x,self.shelf_dict[shelf_id].y])
+
+        lines = self.map_str.split('/')
+
+        lines_new = []
+
+        for i in range (len(lines)):
+            line = lines[i].split(',')
+            for j in range (len(line)):
+                for agent in agent_pos:
+                    if [i,j] == agent[0:2]:
+                        line[j] = 'A' + str(agent[2])
+                        agent_pos.remove(agent)
+                        continue
+                for shelf in shelf_pos:
+                    if [i,j] in shelf_pos:
+                        line[j] = 'S'
+                        continue
+            sep = ','
+            lines_new.append(sep.join(line))
+        
+        s = '/'
+        print(lines_new)
+        new_map_str = s.join(lines_new)
+        '''
+        
