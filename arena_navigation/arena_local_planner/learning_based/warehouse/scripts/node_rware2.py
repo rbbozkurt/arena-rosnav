@@ -161,6 +161,7 @@ class Warehouse:
         
         # subscriptions
         self.sub_agent_action = rospy.Subscriber("/agent_action_topic", Vector3, self.cb_agent_action )
+        self.sub_agent_debug_action = rospy.Subscriber("/agent_action_debug", String, self.cb_debug_agent_action)
         #self.sub_goal = rospy.Subscriber("/goal_init_topic", Vector3, self.cb_sub_goal ) # todo??
         self.sub_shelves = rospy.Subscriber("/shelf_topic", Vector3, self.cb_shelves ) # spawning shelves
 
@@ -177,7 +178,13 @@ class Warehouse:
         self.map_str = ""
 
         ##iterate over the map to find goal and the shelf
+    def cb_debug_agent_action(self,data):
+        actions = str(data.data).split('-')
 
+        for action in actions:
+            agent_ind, agent_action = action.split(',')
+            self.agent_dict[int(agent_ind)].step(Action(int(agent_action)))
+            self.update_map()
     def read_parse_map(self,data):
         
         self.map_str = str(data.data)

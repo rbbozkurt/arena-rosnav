@@ -14,6 +14,7 @@ class Gridworld:
         self.agent_pos_sub = rospy.Subscriber("/agent_position_topic", String, self.cb_update_map)
         self.agent_handle_load_sub = rospy.Subscriber("/agent_handle_load_topic", String)
         self.map_pub = rospy.Publisher('map_topic', String,queue_size=10)
+        self.debug_agent_action_pub = rospy.Publisher("/agent_action_debug", String, queue_size=10)
         self.spawn_shelf_pub = rospy.Publisher('spawn_shelf_topic', String,queue_size=10)
         self.spawn_agent_pub = rospy.Publisher('spawn_agent_topic', String,queue_size=10)
         self.update_map_sub = rospy.Subscriber("update_map_topic", String, self.cb_update_map)
@@ -53,13 +54,19 @@ class Gridworld:
     def cb_handle_load(self):
         #TODO
         return
+    def debug_agent_action(self, agent_moves):
+        rate = rospy.Rate(10)  # 10hz
+        while not rospy.is_shutdown():
+            rate.sleep()
+            self.debug_agent_action_pub.publish(agent_moves)
+            break
+
 
 if __name__ == '__main__':
     
     g = Gridworld()
     g.send_map()
     g.spawn_agent('0_1_2')
-    
     g.spawn_shelf('0_1')
-
+    g.debug_agent_action('1,2-2,3-3,1')
     rospy.spin()
