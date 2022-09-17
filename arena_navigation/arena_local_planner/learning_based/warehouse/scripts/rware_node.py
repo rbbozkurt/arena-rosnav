@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-
+import string
 from enum import Enum
-from typing import List, Tuple, Optional, Dict
-from warehouse.msg import AgentInitMessage
+from typing import Tuple, Optional
+
 import numpy as np
 
 
@@ -33,12 +33,23 @@ class EntityType(Enum):
     SHELF = "S"
     GOAL = "G"
     AGENT = "A"
+    NONE = "0"
+
+
+ROW_SEPARATOR = '/'
+COL_SEPARATOR = ','
+FEATURE_SEPARATOR = '_'
+FEATURE_ENTITY_IND = 0
+FEATURE_ID_IND = 2
+FEATURE_DIR_IND = 1
 
 
 class Goal:
     counter = 0
 
     def __init__(self, y: int, x: int):
+        Goal.counter += 1
+        self.id = Goal.counter
         self.x = x
         self.y = y
 
@@ -47,6 +58,8 @@ class Shelf:
     counter = 0
 
     def __init__(self, y: int, x: int):
+        Shelf.counter += 1
+        self.id = Shelf.counter
         self.x = x
         self.y = y
 
@@ -60,24 +73,23 @@ class Agent:
         self.x = x
         self.y = y
         self.cur_dir = dir
-        self.cur_act: Optional[Action] = None
-        self.carrying_shelf: bool = None
+        self.carrying_shelf: Shelf = None
         self.carrying_shelf_id: int = None
-        self.canceled_action: bool = None
         self.has_delivered: bool = False
 
     def unload(self):
         if self.carrying_shelf:
             self.carrying_shelf = None
+            self.carrying_shelf_id = None
             self.has_delivered = True
         return
 
-    def load(self, shelf_id: int):
+    def load(self, shelf: Shelf):
         if self.carrying_shelf:
             return
         else:
-            self.carrying_shelf = True
-            self.carrying_shelf_id = shelf_id
+            self.carrying_shelf = shelf
+            self.carrying_shelf_id = shelf.id
             self.has_delivered = False
         return
 
@@ -130,43 +142,124 @@ class Agent:
 
 class AgentWarehouse:
 
-    def __init__(self, _map_width: float, _map_height: float, _grid_width: int, _grid_height: int, _agents: list,
-                 _goals: list):
+    def __init__(self):
 
-        self.map_width = _map_width
-        self.map_height = _map_height
-        self.grid_width = _grid_width
-        self.grid_height = _grid_height
+        self.map_width = None
+        self.map_height = None
+        self.grid_width = None
+        self.grid_height = None
 
-        self.agent_dic = {}
-        self.shelf_dic = {}
-        self.goal_dic = {}
-
-        self._debug_init_agents(_agents)
-        self._debug_init_goals(_goals)
+        self.agent_dict = {}
+        self.carrying_agent_dict = {}
+        self.shelf_dict = {}
+        self.goal_dict = {}
+        self.map_str = None
         # subscriptions
-        self.agent_action_subs = rospy.Subscriber("/agent_action_topic", Action, )
-        self.agent_init_subs = rospy.Subscriber("/agent_init_topic", Agent, )
-        self.goal_init_subs = rospy.Subscriber("/goal_init_topic", Tuple, )
-        self.shelf_spawn_subs = rospy.Subscriber("/shelf_topic", Tuple, )
+        #
+        # self.agent_action_subs = rospy.Subscriber("/agent_action_topic", Action, )
+        # self.agent_init_subs = rospy.Subscriber("/agent_init_topic", Agent, )
+        # self.goal_init_subs = rospy.Subscriber("/goal_init_topic", Tuple, )
+        # self.shelf_spawn_subs = rospy.Subscriber("/shelf_topic", Tuple, )
+        #
 
         # publishers
-        self.agent_pos_pub = rospy.Publisher("/agent_position_topic", Agent)
-        self.agent_load_pub = rospy.Publisher("/agent_load_topic", Agent)
-        self.agent_unload_pub = rospy.Publisher("/agent_unload_topic", Agent)
+        # self.agent_pos_pub = rospy.Publisher("/agent_position_topic", Agent)
+        # self.agent_load_pub = rospy.Publisher("/agent_load_topic", Agent)
+        # self.agent_unload_pub = rospy.Publisher("/agent_unload_topic", Agent)
 
         ##iterate over the map to find goal and the shelf
 
-    def _debug_init_goals(self, goals: list):
-        for i, (x, y) in enumerate(goals):
-            cal_y, cal_x = self._con_to_disc(y, x)
-            self.goal_dic[i] = Goal(cal_x, cal_y)
+    def parse_string_to_map(self, map_string: string):
+        self.map_str = map_string
+        rows = map_string.split(ROW_SEPARATOR)
+        self.map_height = len(rows)
+        for y_ind, row in enumerate(rows):
+            columns = row.split(COL_SEPARATOR)
+            self.map_width = len(columns)
+            for x_ind, col in enumerate(columns):
+                features = col.split('_')
+                # agent found
+                entity_type = features[FEATURE_ENTITY_IND]
+                if EntityType(entity_type) == EntityType.AGENT:
+                    agent_dir = Direction(int(features[FEATURE_DIR_IND]))
+                    agent = Agent(y_ind, x_ind, agent_dir)
+                    self.agent_dict[agent.id] = agent
+                elif EntityType(entity_type) == EntityType.SHELF:
+                    shelf = Shelf(y_ind, x_ind)
+                    self.shelf_dict[shelf.id] = shelf
+                elif EntityType(entity_type) == EntityType.GOAL:
+                    goal = Goal(y_ind, x_ind)
+                    self.goal_dict[goal.id] = goal
+                else:
+                    pass
 
-    def _debug_init_agents(self, agents: list):
-        for i, (a, (x, y)) in enumerate(agents):
-            cal_y, cal_x = self._con_to_disc(y, x)
-            self.agent_dic[i] = Agent(cal_y, cal_x, a)
+    def map_string(self):
+        map_str_arr = np.chararray((self.map_height, self.map_width), itemsize=10, unicode=True)
+        map_str_arr[:] = '0'
 
+        for goal_id in self.goal_dict.keys():
+            goal = self.goal_dict[goal_id]
+            map_str_arr[goal.y][goal.x] = 'G'
+
+        for agent_id in self.agent_dict.keys():
+            agent = self.agent_dict[agent_id]
+            if map_str_arr[agent.y][agent.x][0] == 'G':
+                map_str_arr[agent.y][agent.x] += '_A' + str(agent.cur_dir.value)
+            else:
+                map_str_arr[agent.y][agent.x] = 'A' + str(agent.cur_dir.value)
+
+        for shelf_id in self.shelf_dict.keys():
+            shelf = self.shelf_dict[shelf_id]
+            if map_str_arr[shelf.y][shelf.x][0] == 'A' or map_str_arr[shelf.y][shelf.x][0] == 'G':
+                map_str_arr[shelf.y][shelf.x] += "_S"
+            else:
+                map_str_arr[shelf.y][shelf.x] = 'S'
+
+        new_map_arr = []
+        for row in map_str_arr[:]:
+            new_map_arr.append(COL_SEPARATOR.join(row.tolist()))
+
+        new_map_str = ROW_SEPARATOR.join(new_map_arr)
+
+        self.map_str = new_map_str
+        return self.map_str
+
+    def debug_spawn_goals(self, goals: string):
+        goals = goals.split(',')
+        for goal in goals:
+            goal_attr = goal.split('_')
+            is_slot_free = True
+            for goal_id in self.goal_dict.keys():
+                if self.goal_dict[goal_id].y == goal_attr[0] and self.goal_dict[goal_id].x == goal_attr[1]:
+                    is_slot_free = False
+
+            if is_slot_free:
+                new_goal = Goal(int(goal_attr[0]),int(goal_attr[1]))
+                self.goal_dict[new_goal.id] = new_goal
+
+    def debug_spawn_agents(self, agents: string):
+        agents = agents.split(',')
+        for agent in agents:
+            agent_attr = agent.split('_')
+            is_slot_free = True
+            for agent_id in self.agent_dict.keys():
+                if self.agent_dict[agent_id].y == agent_attr[0] and self.agent_dict[agent_id].x == agent_attr[1]:
+                    is_slot_free = False
+            if is_slot_free:
+                new_agent = Agent(int(agent_attr[0]), int(agent_attr[1]), Direction(int(agent_attr[2])))
+                self.agent_dict[new_agent.id] = new_agent
+
+    def debug_spawn_shelves(self, shelves : string):
+        shelves = shelves.split(',')
+        for shelf in shelves:
+            shelf_attr = shelf.split('_')
+            new_shelf = Shelf(int(shelf_attr[0]), int(shelf_attr[1]))
+            self.shelf_dict[new_shelf.id] = new_shelf
+    def debug_agents_actions(self, actions : string):
+        actions = actions.split(',')
+        for agent_actions in actions:
+            agent_attr = agent_actions.split('_')
+            self.agent_dict[int(agent_attr[0])].step(Action(int(agent_attr[1])))
     def _init_agents_callback(self, msg):
 
         for i, (a, (x, y)) in enumerate(msg.data):
@@ -222,6 +315,7 @@ class AgentWarehouse:
 
     def step(self):
         pass
+
     # for each simulation step
 
     # checks  if agent is on one of the goals
@@ -251,6 +345,7 @@ class AgentWarehouse:
     # method to be used for converting self.map_image into array
     def _convert_image_into_array(self):
         pass
+
     # convert map into array and initialise self.map_array
     def _con_to_disc(self, map_y: float, map_x: float) -> Tuple:
         single_grid_width = self.map_width / self.grid_width
@@ -269,17 +364,28 @@ class AgentWarehouse:
 
 
 def run():
-    rospy.init_node("agent warehouse", anonymous=False)
+    # rospy.init_node("agent warehouse", anonymous=False)
     print(
         "==================================\nagent warehouse node started\n=================================="
     )
     agents = [(Direction.RIGHT, (722, 300)), (Direction.RIGHT, (400, 200)), (Direction.DOWN, (134, 40)),
               (Direction.UP, (432, 90)), (Direction.UP, (190, 500))]
     goals = [(400, 800), (500, 800)]
-    warehouse = AgentWarehouse(800, 600, 8, 6, agents, goals)
-    rospy.on_shutdown(warehouse.on_shutdown)
+    warehouse = AgentWarehouse()
+    warehouse.parse_string_to_map("0,A_2,0,0,0,A_1,0,0/0,0,0,0,0,0,0,0/0,0,S,0,0,0,0,0/0,0,0,0,0,0,S,0/0,G,0,0,0,0,0,0")
 
-    rospy.spin()
+    warehouse.debug_spawn_agents("2_2_1,2_3_2")
+    warehouse.debug_spawn_shelves("4_7,4_3")
+    warehouse.debug_spawn_goals('3_4')
+    print(warehouse.map_string())
+    warehouse.debug_agents_actions("1_1,2_3,3_2,4_1")
+    print(warehouse.map_string())
+
+
+
+    # rospy.on_shutdown(warehouse.on_shutdown)
+
+    # rospy.spin()
 
 
 if __name__ == "__main__":
