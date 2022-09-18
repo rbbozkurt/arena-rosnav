@@ -19,24 +19,22 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 # arena 
 import math
-from torch.nn.utils.rnn import pack_sequence
-import torch
 import numpy as np
-from enum import Enum
+from enum import Enum, IntEnum
 import math
 
 from scipy.interpolate import RegularGridInterpolator
 
 ID_DECIMALS = 1
 
-class Action(Enum):
+class Action(IntEnum):
     NOOP = 0
     FORWARD = 1
     LEFT = 2
     RIGHT = 3
     HANDLE_LOAD = 4
     
-class Direction(Enum):
+class Direction(IntEnum):
     UP = 0
     DOWN = 1
     LEFT = 2
@@ -74,7 +72,7 @@ class Agent:
         Agent.counter += 1
         self.x = x
         self.y = y
-        self.pre_dir = dir # todo save update pre dir
+        self.pre_dir = int(dir) # todo save update pre dir
         self.dir = dir
         self.cur_act: Optional[Action] = None
         self.carrying_shelf: bool = None
@@ -93,36 +91,53 @@ class Agent:
         return
 
     def step(self, action: Action):
-
-        DIRS = [Direction.UP, Direction.RIGHT, Direction.DOWN, Direction.LEFT]
-        if action != Action.NOOP:
+        self.pre_dir = self.dir
+        if action == Action.LEFT:
             self.cur_act = Action.NOOP
-            if self.cur_act == Action.LEFT:
-                self.cur_dir = DIRS[DIRS.index(self.cur_dir.value -1) % 4]
-            if self.cur_act == Action.RIGHT:
-                self.cur_dir = DIRS[DIRS.index(self.cur_dir.value +1) % 4]
-        
+            if Direction(self.dir) == Direction.RIGHT:
+                self.dir = int(Direction.UP)
+            elif Direction(self.dir) == Direction.UP:
+                self.dir = int(Direction.LEFT)
+            elif Direction(self.dir) == Direction.LEFT:
+                self.dir = int(Direction.DOWN)
+            elif Direction(self.dir) == Direction.DOWN:
+                self.dir = int(Direction.RIGHT)
+        elif action == Action.RIGHT:
+            self.cur_act = Action.NOOP
+            if Direction(self.dir) == Direction.RIGHT:
+                self.dir = int(Direction.DOWN)
+            elif Direction(self.dir) == Direction.DOWN:
+                self.dir = int(Direction.LEFT)
+            elif Direction(self.dir) == Direction.LEFT:
+                self.dir = int(Direction.UP)
+            elif Direction(self.dir) == Direction.UP:
+                self.dir = int(Direction.RIGHT)
+        elif action == Action.NOOP:
+            self.cur_act = action
         elif action == Action.FORWARD:
             self.cur_act = action
-            if self.cur_dir == Direction.DOWN:
+            if Direction(self.dir) == Direction.DOWN:
                 self.y = self.y + 1
-            elif self.cur_dir == Direction.UP:
+            elif Direction(self.dir) == Direction.UP:
                 self.y = self.y - 1
-            elif self.cur_dir == Direction.LEFT:
+            elif Direction(self.dir) == Direction.LEFT:
                 self.x = self.x - 1
-            elif self.cur_dir == Direction.RIGHT:
+            elif Direction(self.dir) == Direction.RIGHT:
                 self.x = self.x + 1
 
             if self.carrying_shelf:
-                self.carrying_shelf.move(self.y, self.x)
-
+                #todo update shelf position but shelf dict in warehouse ?!
+                self.carrying_shelf_id.move(self.y, self.x)
+            
+                
         elif action == Action.HANDLE_LOAD:
-            self.cur_act = Action.HANDLE_LOAD
-            self.handle_load(-1) # todo ask how to get shelf id from task manager, inside action? or warehouse? 
+            self.cur_act = Action.NOOP
             if self.carrying_shelf:
-                self.carrying_shelf.move(self.y, self.x)
-        else:
-            self.cur_act == Action.NOOP
+                # TODO DROP SHELF
+                print()
+            else:
+                self.carrying_shelf = True
+                # TODO PICKUP SHELF
 
 def find_nearest(array, value):
     idx = (np.abs(np.asarray(array) - value)).argmin()
@@ -179,12 +194,12 @@ class Warehouse:
 
         ##iterate over the map to find goal and the shelf
     def cb_debug_agent_action(self,data):
-        actions = str(data.data).split('-')
-
-        for action in actions:
-            agent_ind, agent_action = action.split(',')
-            self.agent_dict[int(agent_ind)].step(Action(int(agent_action)))
+        actions = data.data.split(',')
+        for agent_actions in actions:
+            agent_attr = agent_actions.split('_')
+            self.agent_dict[int(agent_attr[0])].step(Action(int(agent_attr[1])))
             self.update_map()
+
     def read_parse_map(self,data):
         
         self.map_str = str(data.data)
@@ -257,9 +272,9 @@ class Warehouse:
         for agent_id in self.agent_dict.keys():
             agent = self.agent_dict[agent_id]
             if map_str_arr[agent.x][agent.y][0] == 'G':
-                map_str_arr[agent.x][agent.y] += '_A'+ str(agent.dir)
+                map_str_arr[agent.x][agent.y] += '_A'+ str(int(agent.dir))
             else:
-                map_str_arr[agent.x][agent.y] = 'A'+ str(agent.dir)
+                map_str_arr[agent.x][agent.y] = 'A'+ str(int(agent.dir))
 
         for shelf_id in self.shelf_dict.keys():
             shelf = self.shelf_dict[shelf_id]
