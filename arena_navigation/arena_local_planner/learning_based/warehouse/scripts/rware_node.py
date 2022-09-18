@@ -458,7 +458,7 @@ def run():
 
     # rospy.on_shutdown(warehouse.on_shutdown)
 
-    rospy.spin()
+    #rospy.spin()
 
 
 if __name__ == "__main__":
