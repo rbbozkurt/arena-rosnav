@@ -76,6 +76,8 @@ class Agent:
         self.carrying_shelf: Shelf = None
         self.carrying_shelf_id: int = None
         self.has_delivered: bool = False
+        self.goal = None
+        self.des_action_on_goal = None
 
     def unload(self):
         if self.carrying_shelf:
@@ -90,6 +92,8 @@ class Agent:
         else:
             self.carrying_shelf = shelf
             self.carrying_shelf_id = shelf.id
+            self.carrying_shelf.y = self.y
+            self.carrying_shelf.x = self.x
             self.has_delivered = False
         return
 
@@ -129,7 +133,8 @@ class Agent:
                 self.x = self.x + 1
 
             if self.carrying_shelf:
-                self.carrying_shelf.move(self.y, self.x)
+                self.carrying_shelf.y = self.y
+                self.carrying_shelf.x = self.x
         elif action == Action.LOAD:
             self.cur_act = Action.NONE
             self.load()
@@ -219,9 +224,9 @@ class AgentWarehouse:
         for row in map_str_arr[:]:
             new_map_arr.append(COL_SEPARATOR.join(row.tolist()))
 
-        new_map_str = ROW_SEPARATOR.join(new_map_arr)
+        new_map_str = "\n".join(new_map_arr)
 
-        self.map_str = new_map_str
+        self.map_str = new_map_str + "\n" + "----------------"
         return self.map_str
 
     def debug_spawn_goals(self, goals: string):
@@ -259,13 +264,59 @@ class AgentWarehouse:
         actions = actions.split(',')
         for agent_actions in actions:
             agent_attr = agent_actions.split('_')
-            self.agent_dict[int(agent_attr[0])].step(Action(int(agent_attr[1])))
+            agent = self.agent_dict[int(agent_attr[0])]
+            des_action = Action(int(agent_attr[1]))
+
+            ## if action is FORWARD then check collisions
+            if des_action == Action.FORWARD:
+                new_pos = self.simulate_move((agent.y,agent.x), agent.cur_dir, des_action)
+                does_collide = self._does_collide(new_pos)
+                if does_collide:
+                    print('Invalid action ',des_action, 'for agent ', agent.id)
+                    pass
+                else:
+                    self.agent_dict[agent.id].step(des_action)
+            ##no neeed to check collision when turning
+            elif des_action == Action.NONE or des_action == Action.RIGHT or des_action == Action.LEFT:
+                self.agent_dict[agent.id].step(des_action)
+
+            elif des_action == Action.LOAD:
+                is_on_shelf, shelf_id = self._is_agent_on_shelf(agent)
+                if is_on_shelf and  agent.carrying_shelf == None:
+                    shelf = self.shelf_dict[shelf_id]
+                    agent.load(shelf)
+                    print('Agent ', agent.id, 'picked up the shelf ', shelf_id)
+                else:
+                    print('Invalid action ', des_action, 'for agent ', agent.id)
+                    pass
+            elif des_action == Action.UNLOAD:
+                is_on_goal = self._is_agent_on_goal(agent)
+                if is_on_goal and agent.carrying_shelf != None:
+                    shelf = agent.carrying_shelf
+                    agent.unload()
+                    self.shelf_dict.pop(shelf.id)
+                    print('Agent ', agent.id, 'left the shelf ', shelf.id)
+                else:
+                    print('Invalid action ', des_action, 'for agent ', agent.id)
+                    pass
+
     def _init_agents_callback(self, msg):
 
         for i, (a, (x, y)) in enumerate(msg.data):
             cal_y, cal_x = self._con_to_disc(y, x)
             self.agent_dic[i] = Agent(cal_y, cal_x, a)
-
+    def simulate_move(self, entity_pos : tuple, entity_dir : Direction, action : Action):
+        new_y, new_x = entity_pos[0], entity_pos[1]
+        if action == Action.FORWARD:
+            if entity_dir == Direction.UP:
+                new_y -= 1
+            elif entity_dir == Direction.RIGHT:
+                new_x += 1
+            elif entity_dir == Direction.DOWN:
+                new_y += 1
+            else:
+                new_x -= 1
+        return (new_y, new_x)
     def _init_goals_callback(self, msg):
         for i, (x, y) in enumerate(msg.data):
             cal_y, cal_x = self._con_to_disc(y, x)
@@ -321,7 +372,7 @@ class AgentWarehouse:
     # checks  if agent is on one of the goals
     def _is_agent_on_goal(self, agent: Agent) -> bool:
 
-        for goal in self.goal_dic.values():
+        for goal in self.goal_dict.values():
             if goal.x == agent.x and goal.y == agent.y:
                 return True
 
@@ -330,16 +381,24 @@ class AgentWarehouse:
     # checks  if agent is on one of the shelves
     def _is_agent_on_shelf(self, agent: Agent):
 
-        for i, shelf in enumerate(self.shelf_dic.values()):
-            if shelf.x == agent.x and shelf.y == agent.y:
-                return True, i
+        for i, shelf in enumerate(self.shelf_dict.values()):
+            if ((shelf.x - 1 == agent.x or shelf.x + 1 == agent.x) and (shelf.y == agent.y)) or ((shelf.y - 1 == agent.y or shelf.y + 1 == agent.y) and (shelf.x == agent.x)):
+                return True, shelf.id
 
         return False, -1
 
     def _does_collide(self, first: Tuple):
-        for agent in self.agent_dic.values():
-            if first[0] == agent.x and first[1] == agent.y:
+        ## check agents
+        for agent in self.agent_dict.values():
+            if first[0] == agent.y and first[1] == agent.x:
                 return True
+        ## check shelves
+        for shelf in self.shelf_dict.values():
+            if first[0] == shelf.y and first[1] == shelf.x:
+                return True
+        ## check boundaries
+        if first[0] < 0 or first[1] < 0 or first[0] >= self.map_height or first[1] >= self.map_width:
+            return True
         return False
 
     # method to be used for converting self.map_image into array
@@ -377,8 +436,21 @@ def run():
     warehouse.debug_spawn_agents("2_2_1,2_3_2")
     warehouse.debug_spawn_shelves("4_7,4_3")
     warehouse.debug_spawn_goals('3_4')
-    print(warehouse.map_string())
     warehouse.debug_agents_actions("1_1,2_3,3_2,4_1")
+    warehouse.debug_agents_actions("3_4")
+    print(warehouse.map_string())
+    warehouse.debug_spawn_agents("1_4_2")
+    print(warehouse.map_string())
+    warehouse.debug_spawn_shelves("2_4")
+    print(warehouse.map_string())
+    print(warehouse.map_string())
+    warehouse.debug_agents_actions("5_4")
+    print(warehouse.map_string())
+    warehouse.debug_agents_actions("5_1")
+    warehouse.debug_agents_actions("5_1")
+    print(warehouse.map_string())
+
+    warehouse.debug_agents_actions("5_5")
     print(warehouse.map_string())
 
 
