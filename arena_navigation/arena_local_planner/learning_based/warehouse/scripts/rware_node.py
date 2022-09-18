@@ -260,6 +260,7 @@ class AgentWarehouse:
             shelf_attr = shelf.split('_')
             new_shelf = Shelf(int(shelf_attr[0]), int(shelf_attr[1]))
             self.shelf_dict[new_shelf.id] = new_shelf
+    
     def debug_agents_actions(self, actions : string):
         actions = actions.split(',')
         for agent_actions in actions:
@@ -457,7 +458,7 @@ def run():
 
     # rospy.on_shutdown(warehouse.on_shutdown)
 
-    # rospy.spin()
+    rospy.spin()
 
 
 if __name__ == "__main__":
