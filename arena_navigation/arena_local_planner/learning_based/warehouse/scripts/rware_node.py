@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 import string
+import random
 from enum import Enum
 from typing import Tuple, Optional
 
 import numpy as np
 
+DEBUG = True
+
+ROW_SEPARATOR = '/'
+COL_SEPARATOR = ','
+FEATURE_SEPARATOR = '_'
+FEATURE_ENTITY_IND = 0
+FEATURE_ID_IND = 2
+FEATURE_DIR_IND = 1
 
 class Action(Enum):
     NONE = 0
@@ -36,12 +45,6 @@ class EntityType(Enum):
     NONE = "0"
 
 
-ROW_SEPARATOR = '/'
-COL_SEPARATOR = ','
-FEATURE_SEPARATOR = '_'
-FEATURE_ENTITY_IND = 0
-FEATURE_ID_IND = 2
-FEATURE_DIR_IND = 1
 
 
 class Goal:
@@ -159,6 +162,7 @@ class AgentWarehouse:
         self.shelf_dict = {}
         self.goal_dict = {}
         self.map_str = None
+
         # subscriptions
         #
         # self.agent_action_subs = rospy.Subscriber("/agent_action_topic", Action, )
@@ -209,9 +213,15 @@ class AgentWarehouse:
         for agent_id in self.agent_dict.keys():
             agent = self.agent_dict[agent_id]
             if map_str_arr[agent.y][agent.x][0] == 'G':
-                map_str_arr[agent.y][agent.x] += '_A' + str(agent.cur_dir.value)
+                if DEBUG:
+                    map_str_arr[agent.y][agent.x] += '_A' + str(agent.id)
+                else:
+                    map_str_arr[agent.y][agent.x] += '_A' + str(agent.cur_dir.value)
             else:
-                map_str_arr[agent.y][agent.x] = 'A' + str(agent.cur_dir.value)
+                if DEBUG:
+                    map_str_arr[agent.y][agent.x] = 'A' + str(agent.id)
+                else:
+                    map_str_arr[agent.y][agent.x] = 'A' + str(agent.cur_dir.value)
 
         for shelf_id in self.shelf_dict.keys():
             shelf = self.shelf_dict[shelf_id]
@@ -437,22 +447,18 @@ def run():
     warehouse.debug_spawn_agents("2_2_1,2_3_2")
     warehouse.debug_spawn_shelves("4_7,4_3")
     warehouse.debug_spawn_goals('3_4')
-    warehouse.debug_agents_actions("1_1,2_3,3_2,4_1")
-    warehouse.debug_agents_actions("3_4")
-    print(warehouse.map_string())
     warehouse.debug_spawn_agents("1_4_2")
-    print(warehouse.map_string())
     warehouse.debug_spawn_shelves("2_4")
-    print(warehouse.map_string())
-    print(warehouse.map_string())
-    warehouse.debug_agents_actions("5_4")
-    print(warehouse.map_string())
-    warehouse.debug_agents_actions("5_1")
-    warehouse.debug_agents_actions("5_1")
-    print(warehouse.map_string())
+    while len(warehouse.shelf_dict.values()):
+        print(len(warehouse.shelf_dict.values()), " shelves left")
+        actions = []
+        agent_action = []
+        for i in range(1,5):
+            action = random.randint(0, 5)
+            actions.append(str(i)+'_'+str(action))
+        warehouse.debug_agents_actions(",".join(actions))
+        print(warehouse.map_string())
 
-    warehouse.debug_agents_actions("5_5")
-    print(warehouse.map_string())
 
 
 
