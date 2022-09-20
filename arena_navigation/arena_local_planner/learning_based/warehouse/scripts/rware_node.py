@@ -81,6 +81,8 @@ class Agent:
         self.has_delivered: bool = False
         self.goal = None
         self.des_action_on_goal = None
+        self.score = 0
+        self.min_dis = 999
 
     def unload(self):
         if self.carrying_shelf:
@@ -160,6 +162,7 @@ class AgentWarehouse:
         self.agent_dict = {}
         self.carrying_agent_dict = {}
         self.shelf_dict = {}
+        self.free_shelves = {}
         self.goal_dict = {}
         self.map_str = None
 
@@ -196,6 +199,7 @@ class AgentWarehouse:
                 elif EntityType(entity_type) == EntityType.SHELF:
                     shelf = Shelf(y_ind, x_ind)
                     self.shelf_dict[shelf.id] = shelf
+                    self.free_shelves[shelf.id] = shelf
                 elif EntityType(entity_type) == EntityType.GOAL:
                     goal = Goal(y_ind, x_ind)
                     self.goal_dict[goal.id] = goal
@@ -227,8 +231,13 @@ class AgentWarehouse:
             shelf = self.shelf_dict[shelf_id]
             if map_str_arr[shelf.y][shelf.x][0] == 'A' or map_str_arr[shelf.y][shelf.x][0] == 'G':
                 map_str_arr[shelf.y][shelf.x] += "_S"
+                if DEBUG:
+                    map_str_arr[shelf.y][shelf.x] += str(shelf.id)
+
             else:
                 map_str_arr[shelf.y][shelf.x] = 'S'
+                if DEBUG:
+                    map_str_arr[shelf.y][shelf.x] += str(shelf.id)
 
         new_map_arr = []
         for row in map_str_arr[:]:
@@ -270,6 +279,7 @@ class AgentWarehouse:
             shelf_attr = shelf.split('_')
             new_shelf = Shelf(int(shelf_attr[0]), int(shelf_attr[1]))
             self.shelf_dict[new_shelf.id] = new_shelf
+            self.free_shelves[new_shelf.id] = new_shelf
     
     def debug_agents_actions(self, actions : string):
         actions = actions.split(',')
@@ -283,9 +293,15 @@ class AgentWarehouse:
                 new_pos = self.simulate_move((agent.y,agent.x), agent.cur_dir, des_action)
                 does_collide = self._does_collide(new_pos)
                 if does_collide:
-                    print('Invalid action ',des_action, 'for agent ', agent.id)
+                    agent.score -= 0.5
+                   # print('Invalid action ',des_action, 'for agent ', agent.id)
                     pass
                 else:
+                    if agent.carrying_shelf == None:
+                        min = self.calc_min_dis(agent)
+                        if min < agent.min_dis:
+                            agent.min_dis = min
+                            agent.score += 0.5
                     self.agent_dict[agent.id].step(des_action)
             ##no neeed to check collision when turning
             elif des_action == Action.NONE or des_action == Action.RIGHT or des_action == Action.LEFT:
@@ -295,20 +311,25 @@ class AgentWarehouse:
                 is_on_shelf, shelf_id = self._is_agent_on_shelf(agent)
                 if is_on_shelf and  agent.carrying_shelf == None:
                     shelf = self.shelf_dict[shelf_id]
+                    self.free_shelves.pop(shelf.id)
                     agent.load(shelf)
-                    print('Agent ', agent.id, 'picked up the shelf ', shelf_id)
+                    agent.score += 2
+                    agent.min_dis = 0
+                    print('Agent ', agent.id, 'picked up the shelf ', shelf.id)
                 else:
-                    print('Invalid action ', des_action, 'for agent ', agent.id)
+                    #print('Invalid action ', des_action, 'for agent ', agent.id)
                     pass
             elif des_action == Action.UNLOAD:
                 is_on_goal = self._is_agent_on_goal(agent)
                 if is_on_goal and agent.carrying_shelf != None:
                     shelf = agent.carrying_shelf
                     agent.unload()
+                    agent.score += 1
                     self.shelf_dict.pop(shelf.id)
+                    agent.min_dis = 999
                     print('Agent ', agent.id, 'left the shelf ', shelf.id)
                 else:
-                    print('Invalid action ', des_action, 'for agent ', agent.id)
+                   # print('Invalid action ', des_action, 'for agent ', agent.id)
                     pass
 
     def _init_agents_callback(self, msg):
@@ -374,7 +395,13 @@ class AgentWarehouse:
         (ind, (x, y)) = msg.data
         if ind not in self.shelf_dic:
             self.shelf_dic[ind] = Shelf(y, x)
-
+    def calc_min_dis(self, agent : Agent):
+        min = 999
+        for shelf in self.free_shelves.values():
+            dis = abs(agent.x - shelf.x) + abs(agent.y - shelf.y)
+            if dis < min:
+                min = dis
+        return min
     def step(self):
         pass
 
@@ -394,6 +421,9 @@ class AgentWarehouse:
 
         for i, shelf in enumerate(self.shelf_dict.values()):
             if ((shelf.x - 1 == agent.x or shelf.x + 1 == agent.x) and (shelf.y == agent.y)) or ((shelf.y - 1 == agent.y or shelf.y + 1 == agent.y) and (shelf.x == agent.x)):
+                for agent in self.agent_dict.values():
+                    if agent.carrying_shelf != None and agent.carrying_shelf.id == shelf.id:
+                        return False, -1
                 return True, shelf.id
 
         return False, -1
@@ -449,6 +479,7 @@ def run():
     warehouse.debug_spawn_goals('3_4')
     warehouse.debug_spawn_agents("1_4_2")
     warehouse.debug_spawn_shelves("2_4")
+    step_count = 0
     while len(warehouse.shelf_dict.values()):
         print(len(warehouse.shelf_dict.values()), " shelves left")
         actions = []
@@ -458,10 +489,10 @@ def run():
             actions.append(str(i)+'_'+str(action))
         warehouse.debug_agents_actions(",".join(actions))
         print(warehouse.map_string())
-
-
-
-
+        step_count += 1
+    for agent in warehouse.agent_dict.values():
+        print(agent.score)
+    print('step number : ', step_count)
     # rospy.on_shutdown(warehouse.on_shutdown)
 
     #rospy.spin()
