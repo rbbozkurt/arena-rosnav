@@ -484,7 +484,7 @@ def run():
         print(len(warehouse.shelf_dict.values()), " shelves left")
         actions = []
         agent_action = []
-        for i in range(1,5):
+        for i in range(1,6):
             action = random.randint(0, 5)
             actions.append(str(i)+'_'+str(action))
         warehouse.debug_agents_actions(",".join(actions))
