@@ -47,8 +47,8 @@ def simulate():
 if __name__ == "__main__":
 
     env = gym.make("Warehouse-test")
-    MAX_EPISODES = 9999
-    MAX_TRY = 1000
+    MAX_EPISODES = 1
+    MAX_TRY = 10000
     epsilon = 1
     epsilon_decay = 0.999
     learning_rate = 0.1

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import string
 import random
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Tuple, Optional
 
 import numpy as np
@@ -26,7 +26,7 @@ class Action(Enum):
 
 
 # in clockwise
-class Direction(Enum):
+class Direction(IntEnum):
     UP = 0
     RIGHT = 1
     DOWN = 2
@@ -412,11 +412,8 @@ class AgentWarehouse:
         return min
 
     def evaluate(self):
-        if self.agent_dict[0].carrying_shelf:
-            print(self.agent_dict[0].carrying_shelf.x, ',', self.agent_dict[0].carrying_shelf.y)
 
         if self.agent_dict[0].carrying_shelf == None and self.free_shelves :
-            print(self.free_shelves)
             reward = -100 + abs(self.agent_dict[0].x - self.free_shelves[0].x) + abs(self.agent_dict[0].y - self.free_shelves[0].y)
         elif self.agent_dict[0].carrying_shelf and self._is_agent_on_goal(self.agent_dict[0]) :
             reward =  10000
@@ -431,14 +428,11 @@ class AgentWarehouse:
         #    if self.agent_dict[agent].
         dist = [0]
         if self.agent_dict[0].carrying_shelf:
-            print("yes")
             dist[0] = abs(self.goal_dict[0].x - self.agent_dict[0].x) + abs(self.goal_dict[0].y - self.agent_dict[0].y)
         elif not self.is_done() and self.free_shelves:
             dist[0] = abs(self.free_shelves[0].x - self.agent_dict[0].x) + abs(self.free_shelves[0].y - self.agent_dict[0].y)
         elif self.is_done():
-            print("DONE")
             return tuple([0])
-        print("dist : ", dist)
         return tuple(dist)
 
     def step(self):
@@ -468,12 +462,43 @@ class AgentWarehouse:
         return False, -1
 
     def is_done(self):
-        if len(self.shelf_dict.values()):
-            return False
+        if not self.shelf_dict and not self.free_shelves:
+            print('!!!!!!!!!!!!!!!!!!!!!!!DONEEEEEEEEEEEEEEEE')
+            return True
         else:
-            True
+            return False
 
-    def view(self):
+    def view(self):      
+
+        map_str_arr = np.chararray((self.map_height, self.map_width),itemsize=10,unicode=True)
+        map_str_arr[:] = '0'
+
+        map_str_arr[self.goal_dict[0].y][self.goal_dict[0].x] = 'G'
+
+        for agent_id in self.agent_dict.keys():
+            agent = self.agent_dict[agent_id]
+            if map_str_arr[agent.y][agent.x][0] == 'G':
+                map_str_arr[agent.y][agent.x] += '_A'+ str(int(agent.cur_dir))
+            else:
+                map_str_arr[agent.y][agent.x] = 'A'+ str(int(agent.cur_dir))
+
+        for shelf_id in self.shelf_dict.keys():
+            shelf = self.shelf_dict[shelf_id]
+            if map_str_arr[shelf.y][shelf.x][0] == 'A' or map_str_arr[shelf.y][shelf.x][0] == 'G':
+                map_str_arr[shelf.y][shelf.x] += "_S"
+            else:
+                map_str_arr[shelf.y][shelf.x] = 'S'
+
+        new_map_arr = []
+        for row in map_str_arr[:]:
+            s = ','
+            new_map_arr.append(s.join(row.tolist()))
+        s = '/'
+        new_map_str = s.join(new_map_arr)
+
+        self.map_str = new_map_str
+
+
         lines = self.map_str.split('/')
 
         for line in lines:
@@ -482,6 +507,8 @@ class AgentWarehouse:
                 print('-' , c , '-', end='')
             print()
         
+        
+        print("_____________________________________________")
 
         
 
