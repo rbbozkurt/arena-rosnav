@@ -47,12 +47,12 @@ def simulate():
 if __name__ == "__main__":
 
     env = gym.make("Warehouse-test")
-    MAX_EPISODES = 1
+    MAX_EPISODES = 5
     MAX_TRY = 10000
     epsilon = 1
     epsilon_decay = 0.999
     learning_rate = 0.1
     gamma = 0.6
-    num_box = tuple((env.observation_space.high+ np.ones(env.observation_space.shape)).astype(int))
+    num_box = tuple((env.observation_space.high + np.ones(env.observation_space.shape)).astype(int))
     q_table = np.zeros(num_box + (env.action_space.n,))
     simulate()

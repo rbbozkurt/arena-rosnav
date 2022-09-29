@@ -30,7 +30,7 @@ class CustomEnv(gym.Env):
         del self.warehouse.goal_dict
         self.warehouse.map_str = ""
         '''
-
+        del self.warehouse
         self.warehouse = AgentWarehouse()
         self.warehouse.parse_string_to_map("0,A_2,0,0,0,0,0,0/0,0,0,0,0,0,0,0/0,0,S,0,0,0,0,0/0,0,0,0,0,0,0,0/0,G,0,0,0,0,0,0")
         obs = self.warehouse.observe()

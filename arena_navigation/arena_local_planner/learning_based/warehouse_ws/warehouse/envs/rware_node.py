@@ -52,8 +52,8 @@ class Goal:
     counter = 0
 
     def __init__(self, y: int, x: int):
-        #Goal.counter += 1
-        #self.id = Goal.counter
+        Goal.counter += 1
+        self.id = Goal.counter
         self.id = 0
         self.x = x
         self.y = y
@@ -63,8 +63,8 @@ class Shelf:
     counter = 0
 
     def __init__(self, y: int, x: int):
-        #Shelf.counter += 1
-        #self.id = Shelf.counter
+        Shelf.counter += 1
+        self.id = Shelf.counter
         self.id = 0
         self.x = x
         self.y = y
@@ -74,8 +74,8 @@ class Agent:
     counter = 0
 
     def __init__(self, y: int, x: int, dir: Direction):
-        #Agent.counter += 1
-        #self.id = Agent.counter
+        Agent.counter += 1
+        self.id = Agent.counter
         self.id = 0
         self.x = x
         self.y = y
@@ -472,7 +472,7 @@ class AgentWarehouse:
 
         map_str_arr = np.chararray((self.map_height, self.map_width),itemsize=10,unicode=True)
         map_str_arr[:] = '0'
-
+        print(self.agent_dict[0].id)
         map_str_arr[self.goal_dict[0].y][self.goal_dict[0].x] = 'G'
 
         for agent_id in self.agent_dict.keys():
